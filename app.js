@@ -32,6 +32,7 @@ const userSchema = new mongoose.Schema({
     password: String,
     admin: Boolean,
     age: String,
+    flag: Number,
 }, { timestamp: true });
 
 userSchema.plugin(passportLocalMongoose);
@@ -52,7 +53,9 @@ const componentSchema = new mongoose.Schema({
     },
     author: String,
     date: Date,
-    formated_date: String
+    formated_date: String,
+    upvote: Number,
+    downvote: Number,
 }, { timestamp: true });
 
 const Component = new mongoose.model("Component", componentSchema);
@@ -70,7 +73,7 @@ app.get("/", async function(req, res) {
     if (req.isAuthenticated()) {
         curUser = req.user;
     }
-    await Component.find().sort({ date: -1 }).exec(async function(err, foundComponents) {
+    await Component.find().sort({ upvote: -1 }).exec(async function(err, foundComponents) {
         if (err) {
             console.log(err);
             res.redirect("/");
@@ -103,7 +106,7 @@ app.post("/search", async function(req, res) {
     // if (req.body.category !== "Select Category") type = req.body.category;
     if (req.body.name) name = req.body.name;
     if (req.body.author) author = req.body.author;
-    await Component.find({ name: { $regex: name }, author: { $regex: author }, type: { $regex: type } }).sort({ date: sort }).exec(async function(err, foundComponents) {
+    await Component.find({ name: { $regex: name }, author: { $regex: author }, type: { $regex: type } }).sort({ upvote: sort }).exec(async function(err, foundComponents) {
         if (err) {
             res.send(err);
         } else {
@@ -123,7 +126,7 @@ app.post("/search", async function(req, res) {
 
 app.get("/admin", async function(req, res) {
     if (req.isAuthenticated() && req.user.admin) {
-        await Component.find().sort({ date: -1 }).exec(async function(err, foundComponents) {
+        await Component.find().sort({ upvote: -1 }).exec(async function(err, foundComponents) {
             if (err) {
                 res.send(err);
             } else {
@@ -204,7 +207,6 @@ app.get("/category/delete/:cid", async function(req, res) {
 
 
 
-
 app.post("/category/delete/:cid", async function(req, res) {
     var categoryId = req.params.cid;
     if (req.isAuthenticated() && req.user.admin) {
@@ -249,7 +251,9 @@ app.post("/add", function(req, res) {
             userid: req.user._id,
             author: req.user.name,
             date: date_now,
-            formated_date: dateformat(date_now, "mmmm dS, yyyy, h:MM TT")
+            formated_date: dateformat(date_now, "mmmm dS, yyyy, h:MM TT"),
+            upvote: 0,
+            downvote: 0,
         });
         component.save();
         res.redirect("/add");
@@ -265,6 +269,7 @@ app.get("/detail/:cid", async function(req, res) {
     var curUser = null;
     if (req.isAuthenticated()) {
         curUser = req.user;
+        console.log(curUser)
     }
     await Component.findOne({ _id: componentId }).exec(function(err, foundComponent) {
         if (err) {
@@ -348,19 +353,69 @@ app.post("/delete/:cid", async function(req, res) {
 });
 
 
+app.post('/upvote/:id', async(req, res) => {
+    const { id } = req.params;
+    let user = null;
+    if (req.isAuthenticated()) {
+        user = req.user;
+        console.log(user)
 
+        const component = await Component.findOne({ _id: id });
 
+        if (user.flag === 0) {
+            await Component.findOneAndUpdate({ _id: id }, { upvote: component.upvote + 1 })
+            await User.findOneAndUpdate({ _id: user._id }, { flag: 1 })
+        } else if (user.flag === -1) {
+            await Component.findOneAndUpdate({ _id: id }, {
+                "$set": { "upvote": component.upvote + 1, "downvote": component.downvote + 1 }
+            })
+            await User.findOneAndUpdate({ _id: user._id }, { flag: 1 })
+        } else {
+            console.log("already upvoted")
+            console.log(user.flag)
+        }
+        console.log(user)
+    } else {
+        res.redirect("/login");
+    }
+})
 
-// app.get("/terms", function(req, res) {
-//     var curUser = null;
-//     if (req.isAuthenticated()) {
-//         curUser = req.user;
-//     }
-//     res.render("info", {
-//         title: "Terms",
-//         user: curUser
-//     });
-// });
+app.post('/downvote/:id', async(req, res) => {
+        const { id } = req.params;
+        let user = null;
+        if (req.isAuthenticated()) {
+            user = req.user;
+            console.log(user._id)
+
+            const component = await Component.findOne({ _id: id });
+
+            if (user.flag === 0) {
+                await Component.findOneAndUpdate({ _id: id }, { downvote: component.downvote - 1 })
+                await User.findOneAndUpdate({ _id: user._id }, { flag: -1 })
+            } else if (user.flag === 1) {
+                await Component.findOneAndUpdate({ _id: id }, {
+                    "$set": { "upvote": component.upvote - 1, "downvote": component.downvote - 1 }
+                })
+                await User.findOneAndUpdate({ _id: user._id }, { flag: -1 })
+            } else {
+                console.log("already downvoted")
+                console.log(user.flag)
+            }
+            console.log(user)
+        } else {
+            res.redirect("/login");
+        }
+    })
+    // app.get("/terms", function(req, res) {
+    //     var curUser = null;
+    //     if (req.isAuthenticated()) {
+    //         curUser = req.user;
+    //     }
+    //     res.render("info", {
+    //         title: "Terms",
+    //         user: curUser
+    //     });
+    // });
 
 
 // app.get("/privacy", function(req, res) {
@@ -461,6 +516,7 @@ app.post("/register", function(req, res) {
         name: req.body.name,
         admin: false,
         age: req.body.age,
+        flag: 0,
     }, req.body.password, async function(err, user) {
         if (err) {
             res.send(err.message + " go back and use different email as username.");
