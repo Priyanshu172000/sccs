@@ -103,7 +103,6 @@ app.post("/search", async function(req, res) {
         sort = -1;
     if (req.body.sort === "Ascending") sort = 1;
     if (req.body.type !== "Select Type") type = req.body.type;
-    // if (req.body.category !== "Select Category") type = req.body.category;
     if (req.body.name) name = req.body.name;
     if (req.body.author) author = req.body.author;
     await Component.find({ name: { $regex: name }, author: { $regex: author }, type: { $regex: type } }).sort({ upvote: sort }).exec(async function(err, foundComponents) {
